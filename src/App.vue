@@ -1,30 +1,37 @@
 <template>
   <div id="app">
     <github-corner/>
-    <p>Has Vue passed React yet?</p>
-    <template v-if="repos">
-      <h1 v-if="!tie">{{ vueHasPassedReact ? 'YES' : 'NO' }}</h1>
+    <p>Has Scoop passed Chocolatey yet?</p>
+    <template v-if="error">
+      <h1 class="error">Error</h1>
+      <p>
+        Couldn't retrieve any data.
+        The API rate limits might have kicked in. Just wait a bit and try again.
+      </p>
+    </template>
+    <template v-else-if="loaded">
+      <h1 v-if="!tie">{{ scoopHasPassedChoco ? 'YES' : 'NO' }}</h1>
       <h1 :class="{ pad : tie }" v-else>TIE!</h1>
       <p>
-        <small v-if="!vueHasPassedReact && !tie" class="away">
-          Only {{ reactStars - vueStars | formatNumber }} {{ reactStars - vueStars === 1 ? 'star' : 'stars'}} away!
+        <small v-if="!scoopHasPassedChoco && !tie" class="away">
+          Only {{ chocoStars - scoopStars | formatNumber }} {{ chocoStars - scoopStars === 1 ? 'star' : 'stars'}} away!
         </small>
-        <small v-else-if="vueHasPassedReact && !tie" class="ahead">
-          Ahead by {{ vueStars - reactStars | formatNumber }} {{ vueStars - reactStars === 1 ? 'star' : 'stars'}}!
+        <small v-else-if="scoopHasPassedChoco && !tie" class="ahead">
+          Ahead by {{ scoopStars - chocoStars | formatNumber }} {{ scoopStars - chocoStars === 1 ? 'star' : 'stars'}}!
         </small>
       </p>
       <ul>
         <li>
-          <a :href="repos.vue.url" target="_blank">
-            <vue-icon/>
-            <span>{{ vueStars | formatNumber }}</span>
+          <a :href="repos.scoop.url" target="_blank" title="Go to Scoop's GitHub repository">
+            <scoop-icon/>
+            <span>{{ scoopStars | formatNumber }}</span>
             <star-icon/>
           </a>
         </li>
         <li>
-          <a :href="repos.react.url" target="_blank">
-            <react-icon/>
-            <span>{{ reactStars | formatNumber }}</span>
+          <a :href="repos.choco.url" target="_blank" title="Go to Chocolatey's GitHub repository">
+            <choco-icon/>
+            <span>{{ chocoStars | formatNumber }}</span>
             <star-icon/>
           </a>
         </li>
@@ -33,13 +40,6 @@
         <svg :class="{ reloading }" xmlns="http://www.w3.org/2000/svg" width="24" height="24"><path fill="#333333" d="M19 8l-4 4h3c0 3.31-2.69 6-6 6a5.87 5.87 0 0 1-2.8-.7l-1.46 1.46A7.93 7.93 0 0 0 12 20c4.42 0 8-3.58 8-8h3l-4-4zM6 12c0-3.31 2.69-6 6-6 1.01 0 1.97.25 2.8.7l1.46-1.46A7.93 7.93 0 0 0 12 4c-4.42 0-8 3.58-8 8H1l4 4 4-4H6z"/><path d="M0 0h24v24H0z" fill="none"/></svg>
       </span>
     </template>
-    <template v-else-if="error">
-      <h1 class="error">Error</h1>
-      <p>
-        Couldn't retrieve any data.
-        The API rate limits might have kicked in. Just wait a bit and try again.
-      </p>
-    </template>
     <p v-else>Loading...</p>
   </div>
 </template>
@@ -47,50 +47,60 @@
 <script>
 import axios from 'axios'
 import GithubCorner from './components/GithubCorner'
-import { VueIcon, ReactIcon, StarIcon } from './components/icons'
-
-const FUNCTIONS_ENDPOINT = 'https://wt-13e53fa81a1f88b8fd161c9e57aeaac4-0.sandbox.auth0-extend.com/fetchGithubStars'
+import { ScoopIcon, ChocoIcon, StarIcon } from './components/icons'
 
 export default {
   name: 'App',
 
   data() {
     return {
-      repos: null,
+      repos: {
+        scoop: {
+          endpoint: 'https://api.github.com/repos/lukesampson/scoop',
+          url: 'https://github.com/lukesampson/scoop',
+          stars: 0
+        },
+        choco: {
+          endpoint: 'https://api.github.com/repos/chocolatey/choco',
+          url: 'https://github.com/chocolatey/choco',
+          stars: 0
+        }
+      },
       error: false,
+      loaded: false,
       reloading: false
     }
   },
 
   components: {
-    VueIcon,
-    ReactIcon,
+    ScoopIcon,
+    ChocoIcon,
     StarIcon,
     GithubCorner
   },
 
   mounted() {
-    this.fetchRepos()
+    this.fetchData()
     if ('ontouchstart' in window || navigator.msMaxTouchPoints) {
       document.body.classList.remove('no-touch')
     }
   },
 
   computed: {
-    vueHasPassedReact() {
-      return this.vueStars > this.reactStars
+    scoopHasPassedChoco() {
+      return this.repos.scoop.stars > this.repos.choco.stars
     },
 
-    vueStars() {
-      return this.repos.vue.stargazers.totalCount
+    scoopStars() {
+      return this.repos.scoop.stars
     },
 
-    reactStars() {
-      return this.repos.react.stargazers.totalCount
+    chocoStars() {
+      return this.repos.choco.stars
     },
 
     tie() {
-      return this.vueStars === this.reactStars
+      return this.repos.scoop.stars === this.repos.choco.stars
     }
   },
 
@@ -101,18 +111,19 @@ export default {
   },
 
   methods: {
-    async fetchRepos() {
+    async fetchData() {
       try {
-        const { data: res } = await axios.get(FUNCTIONS_ENDPOINT)
-        if (res.errors && res.errors.length) {
-          this.error = true
-          this.repos = null
-          // eslint-disable-next-line
-          console.log(res.errors)
+        const { data: resScoop } = await axios.get(this.repos.scoop.endpoint)
+        const { data: resChoco } = await axios.get(this.repos.choco.endpoint)
+
+        if (resScoop.stargazers_count && resChoco.stargazers_count) {
+          this.repos.scoop.stars = resScoop.stargazers_count
+          this.repos.choco.stars = resChoco.stargazers_count
+          this.error = false
         } else {
           this.error = true
-          this.repos = res.data
         }
+        this.loaded = true
       } catch (err) {
         // eslint-disable-next-line
         console.log(err)
@@ -122,7 +133,7 @@ export default {
     async reload() {
       if (this.reloading) return
       this.reloading = true
-      await this.fetchRepos()
+      await this.fetchData()
       setTimeout(() => {
         this.reloading = false
       }, 900)
@@ -203,6 +214,7 @@ li a {
 li a > svg {
   display: block;
   width: 22px;
+  height: 22px;
 }
 
 li a > * {
@@ -262,7 +274,7 @@ p {
   from {
     transform: rotate(0deg);
   }
-  to { 
+  to {
     transform: rotate(-360deg);
   }
 }
